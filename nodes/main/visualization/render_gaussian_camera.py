@@ -63,9 +63,13 @@ class RenderGaussianCameraNode:
                     "tooltip": "Camera rotation Z (Roll) in degrees"
                 }),
                 # Camera Intrinsics
-                "focal_length": ("FLOAT", {
-                    "default": 500.0, "min": 10.0, "max": 10000.0, "step": 1.0,
-                    "tooltip": "Focal length in pixels"
+                "focal_length_mm": ("FLOAT", {
+                    "default": 35.0, "min": 1.0, "max": 10000.0, "step": 1.0,
+                    "tooltip": "Focal length in mm (35mm equivalent)"
+                }),
+                "sensor_width_mm": ("FLOAT", {
+                    "default": 36.0, "min": 1.0, "max": 1000.0, "step": 1.0,
+                    "tooltip": "Sensor width in mm (default 36mm for full frame)"
                 }),
                 "background_color": (["black", "white", "transparent"], {
                     "default": "black",
@@ -82,7 +86,7 @@ class RenderGaussianCameraNode:
     def render(self, ply_path, width, height,
                translate_x, translate_y, translate_z,
                rotate_x, rotate_y, rotate_z,
-               focal_length, background_color="black"):
+               focal_length_mm, sensor_width_mm=36.0, background_color="black"):
         
         # 1. Check for gsplat availability
         try:
@@ -161,8 +165,13 @@ class RenderGaussianCameraNode:
         # [ 0  0  1]
         cx = width / 2.0
         cy = height / 2.0
-        fx = focal_length
-        fy = focal_length
+        
+        # Calculate focal length in pixels from mm
+        # f_pixel = (f_mm / sensor_width_mm) * image_width
+        # We assume sensor width maps to image width
+        fx = (focal_length_mm / sensor_width_mm) * width
+        fy = fx # Square pixels
+        
         K = torch.tensor([
             [fx, 0, cx],
             [0, fy, cy],
