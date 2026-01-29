@@ -38,15 +38,15 @@ class RenderGaussianCameraNode:
                 }),
                 # Camera Transform
                 "translate_x": ("FLOAT", {
-                    "default": 0.0, "step": 0.1,
+                    "default": 0.0, "min": -10000.0, "max": 10000.0, "step": 0.1,
                     "tooltip": "Camera position X"
                 }),
                 "translate_y": ("FLOAT", {
-                    "default": 0.0, "step": 0.1,
+                    "default": 0.0, "min": -10000.0, "max": 10000.0, "step": 0.1,
                     "tooltip": "Camera position Y"
                 }),
                 "translate_z": ("FLOAT", {
-                    "default": 3.0, "step": 0.1,
+                    "default": 3.0, "min": -10000.0, "max": 10000.0, "step": 0.1,
                     "tooltip": "Camera position Z"
                 }),
                 # Camera Rotation
