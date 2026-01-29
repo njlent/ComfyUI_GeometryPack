@@ -84,6 +84,10 @@ class CombineGaussiansNode:
     Each input Gaussian can be independently transformed (translate, rotate, scale)
     to position it correctly in the combined scene.
 
+    Rotation Pivot Modes:
+    - "origin": Rotate around origin/camera (translate first, then rotate) - for orbiting
+    - "local": Rotate in place (rotate first, then translate) - for orientation only
+
     Outputs the path to the combined PLY file along with camera parameters
     for use with the Preview Gaussian node.
     """
@@ -103,6 +107,10 @@ class CombineGaussiansNode:
                 "output_filename": ("STRING", {
                     "default": "combined_gaussian",
                     "tooltip": "Output filename (without extension)"
+                }),
+                "rotation_pivot": (["origin", "local"], {
+                    "default": "origin",
+                    "tooltip": "origin: rotate around camera/origin (orbit), local: rotate in place"
                 }),
             },
             "optional": {
@@ -190,8 +198,14 @@ class CombineGaussiansNode:
 
         return plydata, vertex
 
-    def _transform_gaussian(self, vertex, tx, ty, tz, rx, ry, rz, scale):
-        """Apply transform to Gaussian splat data."""
+    def _transform_gaussian(self, vertex, tx, ty, tz, rx, ry, rz, scale, pivot_mode="origin"):
+        """
+        Apply transform to Gaussian splat data.
+
+        Args:
+            pivot_mode: "origin" = translate then rotate (orbit around origin)
+                       "local" = rotate then translate (rotate in place)
+        """
         n_points = len(vertex.data)
 
         # Extract positions
@@ -199,25 +213,45 @@ class CombineGaussiansNode:
         y = vertex['y'].copy()
         z = vertex['z'].copy()
 
-        # Apply scale to positions
+        # Apply scale to positions first (always)
         x *= scale
         y *= scale
         z *= scale
 
-        # Apply rotation to positions
-        if rx != 0 or ry != 0 or rz != 0:
-            rot_matrix = rotation_matrix_from_euler(rx, ry, rz)
-            positions = np.column_stack([x, y, z])
-            rotated = positions @ rot_matrix.T
-            x, y, z = rotated[:, 0], rotated[:, 1], rotated[:, 2]
+        # Get rotation matrix if needed
+        has_rotation = rx != 0 or ry != 0 or rz != 0
+        rot_matrix = rotation_matrix_from_euler(rx, ry, rz) if has_rotation else None
 
-        # Apply translation
-        x += tx
-        y += ty
-        z += tz
+        if pivot_mode == "origin":
+            # ORIGIN pivot: translate first, then rotate around origin
+            # This makes the gaussian orbit around the camera/origin
+            
+            # Apply translation first
+            x += tx
+            y += ty
+            z += tz
+            
+            # Then rotate around origin
+            if has_rotation:
+                positions = np.column_stack([x, y, z])
+                rotated = positions @ rot_matrix.T
+                x, y, z = rotated[:, 0], rotated[:, 1], rotated[:, 2]
+        else:
+            # LOCAL pivot: rotate first (in place), then translate
+            # This rotates the gaussian's orientation without moving it
+            
+            # Rotate around origin first
+            if has_rotation:
+                positions = np.column_stack([x, y, z])
+                rotated = positions @ rot_matrix.T
+                x, y, z = rotated[:, 0], rotated[:, 1], rotated[:, 2]
+            
+            # Then apply translation
+            x += tx
+            y += ty
+            z += tz
 
         # Create new vertex data with transformed positions
-        # First, get all property names and types
         props = vertex.data.dtype.names
         new_data = np.zeros(n_points, dtype=vertex.data.dtype)
 
@@ -238,7 +272,7 @@ class CombineGaussiansNode:
                     new_data[scale_prop] = vertex.data[scale_prop] + np.log(scale)
 
         # Transform rotations (quaternions) if rotation applied
-        if rx != 0 or ry != 0 or rz != 0:
+        if has_rotation:
             if all(f'rot_{i}' in props for i in range(4)):
                 euler_quat = euler_to_quaternion(rx, ry, rz)
                 for i in range(n_points):
@@ -259,7 +293,7 @@ class CombineGaussiansNode:
         return new_data
 
     def combine_gaussians(
-        self, gaussian_1_path, gaussian_2_path, output_filename,
+        self, gaussian_1_path, gaussian_2_path, output_filename, rotation_pivot="origin",
         g1_translate_x=0.0, g1_translate_y=0.0, g1_translate_z=0.0,
         g1_rotate_x=0.0, g1_rotate_y=0.0, g1_rotate_z=0.0, g1_scale=1.0,
         g2_translate_x=0.0, g2_translate_y=0.0, g2_translate_z=-0.5,
@@ -273,6 +307,7 @@ class CombineGaussiansNode:
             gaussian_1_path: Path to first Gaussian PLY
             gaussian_2_path: Path to second Gaussian PLY
             output_filename: Output filename (without extension)
+            rotation_pivot: "origin" (orbit) or "local" (in-place rotation)
             g1_*/g2_*: Transform parameters for each Gaussian
             extrinsics/intrinsics: Camera parameters (passthrough)
 
@@ -289,6 +324,7 @@ class CombineGaussiansNode:
         n_points_2 = len(vertex2.data)
         print(f"[CombineGaussians] Gaussian 1: {n_points_1:,} points")
         print(f"[CombineGaussians] Gaussian 2: {n_points_2:,} points")
+        print(f"[CombineGaussians] Rotation pivot mode: {rotation_pivot}")
 
         # Transform each Gaussian
         print(f"[CombineGaussians] Applying transform to Gaussian 1: "
@@ -296,7 +332,7 @@ class CombineGaussiansNode:
               f"rotate=({g1_rotate_x}, {g1_rotate_y}, {g1_rotate_z}), scale={g1_scale}")
         data1 = self._transform_gaussian(
             vertex1, g1_translate_x, g1_translate_y, g1_translate_z,
-            g1_rotate_x, g1_rotate_y, g1_rotate_z, g1_scale
+            g1_rotate_x, g1_rotate_y, g1_rotate_z, g1_scale, rotation_pivot
         )
 
         print(f"[CombineGaussians] Applying transform to Gaussian 2: "
@@ -304,7 +340,7 @@ class CombineGaussiansNode:
               f"rotate=({g2_rotate_x}, {g2_rotate_y}, {g2_rotate_z}), scale={g2_scale}")
         data2 = self._transform_gaussian(
             vertex2, g2_translate_x, g2_translate_y, g2_translate_z,
-            g2_rotate_x, g2_rotate_y, g2_rotate_z, g2_scale
+            g2_rotate_x, g2_rotate_y, g2_rotate_z, g2_scale, rotation_pivot
         )
 
         # Combine data
@@ -332,11 +368,14 @@ class CombineGaussiansNode:
         print(f"[CombineGaussians] Saved combined Gaussian to: {output_path}")
 
         # Build info string
+        pivot_desc = "orbit around origin" if rotation_pivot == "origin" else "rotate in place"
         info = f"""Combine Gaussians Results:
 
 Input Files:
   Gaussian 1: {os.path.basename(gaussian_1_path)} ({n_points_1:,} points)
   Gaussian 2: {os.path.basename(gaussian_2_path)} ({n_points_2:,} points)
+
+Rotation Pivot: {rotation_pivot} ({pivot_desc})
 
 Transforms Applied:
   Gaussian 1:
