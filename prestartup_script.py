@@ -1,5 +1,8 @@
-from comfy_env import setup_env
-setup_env()
+try:
+    from comfy_env import setup_env
+    setup_env()
+except ImportError:
+    print("[GeometryPack] Warning: comfy-env not installed, skipping environment setup")
 
 import json
 import os

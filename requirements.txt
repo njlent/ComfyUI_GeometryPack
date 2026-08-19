@@ -1,5 +1,5 @@
 # Core
-comfy-env==0.1.8
+comfy-env>=0.4.22
 scipy>=1.7.0
 tqdm>=4.60.0
 requests>=2.25.0
@@ -7,7 +7,9 @@ requests>=2.25.0
 
 # Mesh processing
 trimesh[easy]>=4.0.0
-libigl>=2.6.1
+# libigl stable releases (<=2.6.2) ship no Windows wheels usable on Python 3.13;
+# the 2.6.3 dev builds publish cp312-abi3 wheels that cover Python 3.12+
+libigl==2.6.3.dev4
 pymeshlab>=2025.7
 rtree
 point-cloud-utils>=0.30.0
@@ -24,7 +26,8 @@ Pillow>=9.0.0
 pyvista>=0.43.0
 
 # ComfyUI integration
-comfy-dynamic-widgets==0.1.1
-comfy-3d-viewers==0.2.1
+# comfy-dynamic-widgets is no longer available on PyPI; the nodes degrade
+# gracefully without it (widget visibility mappings are skipped)
+comfy-3d-viewers>=0.2.44
 plyfile>=0.8.1
 gsplat>=1.0.0
